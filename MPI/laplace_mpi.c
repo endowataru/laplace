@@ -1,25 +1,25 @@
 /****************************************************************
- * Laplace MPI C Version                                         
- *                                                               
- * T is initially 0.0                                            
- * Boundaries are as follows                                     
- *                                                               
- *                T                      4 sub-grids            
- *   0  +-------------------+  0    +-------------------+       
- *      |                   |       |                   |           
- *      |                   |       |-------------------|         
- *      |                   |       |                   |      
- *   T  |                   |  T    |-------------------|             
- *      |                   |       |                   |     
- *      |                   |       |-------------------|            
- *      |                   |       |                   |   
- *   0  +-------------------+ 100   +-------------------+         
- *      0         T       100                                    
- *                                                                 
+ * Laplace MPI C Version
+ *
+ * T is initially 0.0
+ * Boundaries are as follows
+ *
+ *                T                      4 sub-grids
+ *   0  +-------------------+  0    +-------------------+
+ *      |                   |       |                   |
+ *      |                   |       |-------------------|
+ *      |                   |       |                   |
+ *   T  |                   |  T    |-------------------|
+ *      |                   |       |                   |
+ *      |                   |       |-------------------|
+ *      |                   |       |                   |
+ *   0  +-------------------+ 100   +-------------------+
+ *      0         T       100
+ *
  * Each PE only has a local subgrid.
- * Each PE works on a sub grid and then sends         
+ * Each PE works on a sub grid and then sends
  * its boundaries to neighbors.
- *                                                                 
+ *
  *  John Urbanic, PSC 2014
  *
  *******************************************************************/
@@ -40,13 +40,15 @@
 
 // communication tags
 #define DOWN     100
-#define UP       101   
+#define UP       101
 
+// Original Parmeters
+#define DEPTH	1 //It must be lower than ROWS
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
-double Temperature[ROWS+2][COLUMNS+2];
-double Temperature_last[ROWS+2][COLUMNS+2];
+double Temperature[ROWS+2*DEPTH][COLUMNS+2];
+double Temperature_last[ROWS+2*DEPTH][COLUMNS+2];
 
 void initialize(int npes, int my_PE_num);
 void track_progress(int iter, double dt);
@@ -104,34 +106,36 @@ int main(int argc, char *argv[]) {
 
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
 
-        // main calculation: average my four neighbors
-        for(i = 1; i <= ROWS; i++) {
-            for(j = 1; j <= COLUMNS; j++) {
-                Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] +
-                                            Temperature_last[i][j+1] + Temperature_last[i][j-1]);
-            }
-        }
+		for(int d=0;d<DEPTH;d++){
+        // main calculation: average my four neighborsa
+			for(i = 1+d; i <= ROWS+DEPTH-1-d; i++) {
+				for(j = 1; j <= COLUMNS; j++) {
+					Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] +
+							Temperature_last[i][j+1] + Temperature_last[i][j-1]);
+				}
+			}
+		}
 
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
         // send bottom real row down
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Send(&Temperature[ROWS][1], COLUMNS, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+            MPI_Send(&Temperature[ROWS+DEPTH-1][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
         }
 
         // receive the bottom row from above into our top ghost row
         if(my_PE_num != 0){                  //unless we are top PE
-            MPI_Recv(&Temperature_last[0][1], COLUMNS, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+            MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
         }
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
-            MPI_Send(&Temperature[1][1], COLUMNS, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
+            MPI_Send(&Temperature[1+DEPTH-1][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
         }
 
         // receive the top row from below into our bottom ghost row
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Recv(&Temperature_last[ROWS+1][1], COLUMNS, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+            MPI_Recv(&Temperature_last[ROWS+1][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
         }
 
         dt = 0.0;
@@ -143,7 +147,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // find global dt                                                        
+        // find global dt
         MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 	MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -154,10 +158,10 @@ int main(int argc, char *argv[]) {
 	    }
         }
 
-	iteration++;
+	iteration+=DEPTH;
     }
 
-    // Slightly more accurate timing and cleaner output 
+    // Slightly more accurate timing and cleaner output
     MPI_Barrier(MPI_COMM_WORLD);
 
     // PE 0 finish timing and output values
