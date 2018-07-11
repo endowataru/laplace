@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <math.h>
 #include <mpi.h>
 
@@ -50,9 +51,11 @@
 double Temperature[ROWS+2*DEPTH][COLUMNS+2];
 double Temperature_last[ROWS+2*DEPTH][COLUMNS+2];
 
-void initialize(int npes, int my_PE_num);
+void initialize();
 void track_progress(int iter, double dt);
 
+int        npes;                // number of PEs
+int        my_PE_num;           // my PE number
 
 int main(int argc, char *argv[]) {
 
@@ -62,8 +65,6 @@ int main(int argc, char *argv[]) {
     double dt;
     double start_time, stop_time, elapsed_time;
 
-    int        npes;                // number of PEs
-    int        my_PE_num;           // my PE number
     double     dt_global=100;       // delta t across all PEs
     MPI_Status status;              // status returned by MPI calls
 
@@ -108,10 +109,16 @@ int main(int argc, char *argv[]) {
 
 		for(int d=0;d<DEPTH;d++){
         // main calculation: average my four neighborsa
-			for(i = 1+d; i <= ROWS+DEPTH-1-d; i++) {
+
+			//This code block is to surpress updates of bounderies.
+		    int start_i=1+d;
+			int end_i=ROWS+DEPTH*2-2-d;
+			if(my_PE_num == 0) start_i = max(start_i, DEPTH);
+			if(my_PE_num == npes-1) end_i = min(end_i, ROWS+DEPTH-1)
+
+			for(i = start_i; i <= end_i; i++) {
 				for(j = 1; j <= COLUMNS; j++) {
-					Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] +
-							Temperature_last[i][j+1] + Temperature_last[i][j-1]);
+					Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
 				}
 			}
 		}
@@ -178,36 +185,32 @@ int main(int argc, char *argv[]) {
 
 
 
-void initialize(int npes, int my_PE_num){
+void initialize(){
 
-    double tMin, tMax;  //Local boundary limits
-    int i,j;
+	double tMin, tMax;  //Local boundary limits
+	int i,j;
 
-    for(i = 0; i <= ROWS+1; i++){
-        for (j = 0; j <= COLUMNS+1; j++){
-            Temperature_last[i][j] = 0.0;
-        }
-    }
+	memset(Temperature_last, 0, sizeof(Temperature_last));
 
-    // Local boundry condition endpoints
-    tMin = (my_PE_num)*100.0/npes;
-    tMax = (my_PE_num+1)*100.0/npes;
+	// Local boundry condition endpoints
+	tMin = (my_PE_num)*100.0/npes;
+	tMax = (my_PE_num+1)*100.0/npes;
 
-    // Left and right boundaries
-    for (i = 0; i <= ROWS+1; i++) {
-      Temperature_last[i][0] = 0.0;
-      Temperature_last[i][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*i;
-    }
+	// Left and right boundaries
+	for (i = 0; i <= ROWS+1; i++) {
+		Temperature_last[i+DEPTH-1][0] = 0.0;
+		Temperature_last[i+DEPTH-1][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*i;
+	}
 
-    // Top boundary (PE 0 only)
-    if (my_PE_num == 0)
-      for (j = 0; j <= COLUMNS+1; j++)
-	Temperature_last[0][j] = 0.0;
+	// Top boundary (PE 0 only)
+	if (my_PE_num == 0)
+		for (j = 0; j <= COLUMNS+1; j++)
+			Temperature_last[DEPTH-1][j] = 0.0;
 
-    // Bottom boundary (Last PE only)
-    if (my_PE_num == npes-1)
-      for (j=0; j<=COLUMNS+1; j++)
-	Temperature_last[ROWS+1][j] = (100.0/COLUMNS) * j;
+	// Bottom boundary (Last PE only)
+	if (my_PE_num == npes-1)
+		for (j=0; j<=COLUMNS+1; j++)
+			Temperature_last[DEPTH+ROWS][j] = (100.0/COLUMNS) * j;
 
 }
 
