@@ -211,9 +211,6 @@ void initialize(int npes, int my_PE_num){
     if (my_PE_num == npes-1)
       for (j=0; j<=COLUMNS+1; j++)
 	Temperature_last[ROWS+1][j] = (100.0/COLUMNS) * j;
-
-    // Allocate buffer for track_progress
-    
 }
 
 
