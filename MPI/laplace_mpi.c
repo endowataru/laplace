@@ -29,8 +29,15 @@
 #include <math.h>
 #include <mpi.h>
 
-#define COLUMNS       672
-#define ROWS_GLOBAL   672        // this is a "global" row count
+#define ENABLE_LARGE
+
+#ifdef ENABLE_LARGE
+    #define COLUMNS       10752
+    #define ROWS_GLOBAL   10752        // this is a "global" row count
+#else
+    #define COLUMNS       672
+    #define ROWS_GLOBAL   672        // this is a "global" row count
+#endif
 
 // Use 10752 (16 times bigger) for large challenge problem
 // All chosen to be easily divisible by Bridges' 28 cores per node
@@ -45,8 +52,13 @@
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
-#define CHECK_ROW   504
-#define CHECK_COL   622
+#ifdef ENABLE_LARGE
+    #define CHECK_ROW   8064
+    #define CHECK_COL   10702
+#else
+    #define CHECK_ROW   504
+    #define CHECK_COL   622
+#endif
 
 double Temperature[ROWS+2][COLUMNS+2];
 double Temperature_last[ROWS+2][COLUMNS+2];
