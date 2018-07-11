@@ -45,6 +45,9 @@
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
+#define CHECK_ROW   504
+#define CHECK_COL   622
+
 double Temperature[ROWS+2][COLUMNS+2];
 double Temperature_last[ROWS+2][COLUMNS+2];
 
@@ -167,6 +170,17 @@ int main(int argc, char *argv[]) {
 
         printf("\nMax error at iteration %d was %20.15g\n", iteration-1, dt_global);
         printf("Total time was %f seconds.\n", elapsed_time);
+    }
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    if (CHECK_ROW/ROWS == my_PE_num) {
+        printf("PE %d: T(%d,%d) = %lf (%lf)\n",
+            my_PE_num, CHECK_ROW, CHECK_COL,
+            Temperature_last[CHECK_ROW % ROWS][CHECK_COL],
+            Temperature[CHECK_ROW % ROWS][CHECK_COL]
+            // TODO: Temperature becomes 0.0
+        );
     }
 
     MPI_Finalize();
