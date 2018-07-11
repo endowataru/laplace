@@ -3,7 +3,7 @@
 module unload pgi mpi/pgi_openmpi intel
 module load pgi mpi/pgi_openmpi
 
-mpicc -acc -Minfo=accel laplace_mpi.c
+mpicc -O3 -acc -Minfo=accel laplace_mpi.c
 
 sbatch \
 -N $2 -p GPU-shared --ntasks-per-node 1 \
