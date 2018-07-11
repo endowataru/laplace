@@ -29,7 +29,7 @@
 #include <math.h>
 #include <mpi.h>
 
-#define ENABLE_LARGE
+//#define ENABLE_LARGE
 
 #ifdef ENABLE_LARGE
     #define COLUMNS       10752
