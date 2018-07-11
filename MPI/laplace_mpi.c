@@ -150,8 +150,8 @@ int main(int argc, char *argv[]) {
         // periodically print test values - only for PE in lower corner
         if((iteration % 100) == 0) {
 	  if (my_PE_num == npes-1) {
-	    i_buf = 0.04 * (iteration-1);   // i_buf = (iteration/100) * 4
-	    buf_track[i_buf]   = dt_global;
+	    i_buf = 0.04 * iteration - 4;
+	    buf_track[i_buf]   = dt;
 	    buf_track[i_buf+1] = Temperature[ROWS-5][COLUMNS-5];
 	    buf_track[i_buf+2] = Temperature[ROWS-4][COLUMNS-4];
 	    buf_track[i_buf+3] = Temperature[ROWS-3][COLUMNS-3];
