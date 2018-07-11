@@ -1,4 +1,7 @@
 #!/bin/bash
 
-mpirun -n 1 ./a.out
+module unload pgi mpi/pgi_openmpi intel
+module load pgi mpi/pgi_openmpi
+
+mpirun -n 4 ./a.out
 
