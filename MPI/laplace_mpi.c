@@ -235,7 +235,7 @@ int main(int argc, char *argv[]) {
 	MPI_Allreduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
         // periodically print test values - only for PE in lower corner
-        if((iteration % 100) == 0) {
+        if((iteration % 100) == 1) {
             if (my_PE_num == npes-1 ){
                 track_progress(iteration, dt_global);
             }
