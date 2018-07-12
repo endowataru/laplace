@@ -30,7 +30,7 @@
 #include <math.h>
 #include <mpi.h>
 
-#define ENABLE_LARGE
+//#define ENABLE_LARGE
 //#define ENABLE_ACC_TEMPORAL_BLOCKING
 
 #define ENABLE_DOUBLE_BUFFERING
@@ -262,7 +262,6 @@ int main(int argc, char *argv[]) {
             #endif
         }
 
-        #if 1
         #pragma acc parallel async(1)
         {
             #pragma acc loop
@@ -276,24 +275,6 @@ int main(int argc, char *argv[]) {
             for (i = ROW_GPU_LAST; i <= ROWS+DEPTH-1; i++) { INNER_LOOP_MAX(dt_omp_2) INNER_LOOP_COPY }
         }
         #pragma acc wait(1)
-        
-        #else
-        dt = 0;
-        
-        #pragma omp parallel for reduction(max:dt)
-        for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
-<<<<<<< HEAD
-            INNER_LOOP_MAX(dt) INNER_LOOP_COPY
-=======
-            for(j = 1; j <= COLUMNS; j++){
-                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-                #ifndef ENABLE_DOUBLE_BUFFERING
-                Temperature_last[i][j] = Temperature[i][j];
-                #endif
-            }
->>>>>>> master
-        }
-        #endif
         
         #endif // ENABLE_ACC_TEMPORAL_BLOCKING
         
