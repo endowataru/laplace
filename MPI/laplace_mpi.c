@@ -129,21 +129,21 @@ int main(int argc, char *argv[]) {
     #pragma acc data copyin(Temperature_last), create(Temperature)
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
         // main calculation: average my four neighbors
-        #define INNER_LOOP_1 { \
-            int j; \
-            for(j = 1; j <= COLUMNS; j++) { \
+        #define INNER_LOOP_CALC \
+            for (int j = 1; j <= COLUMNS; j++) { \
                 Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + \
                                             Temperature_last[i][j+1] + Temperature_last[i][j-1]); \
-            } \
-        }
+            }
         
-        #define INNER_LOOP_2(dt_red) { \
-            int j; \
-            for(j = 1; j <= COLUMNS; j++){ \
+        #define INNER_LOOP_MAX(dt_red) \
+            for (int j = 1; j <= COLUMNS; j++) { \
                 dt_red = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt_red); \
+            }
+        
+        #define INNER_LOOP_COPY \
+            for (int j = 1; j <= COLUMNS; j++) { \
                 Temperature_last[i][j] = Temperature[i][j]; \
-            } \
-        }
+            }
         
         double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
         
@@ -153,11 +153,16 @@ int main(int argc, char *argv[]) {
                 int start_i = ROW_GPU_FIRST-(DEPTH-1)+d;
                 int end_i   = ROW_GPU_LAST +(DEPTH-1)-d;
                 #pragma acc loop
-                for(i = start_i; i < end_i; i++) { INNER_LOOP_1 }
+                for(i = start_i; i < end_i; i++) { INNER_LOOP_CALC }
+                
+                if (d != DEPTH-1) {
+                    #pragma acc loop
+                    for (i = start_i; i < end_i; i++) { INNER_LOOP_COPY }
+                }
             }
             
             #pragma acc loop
-            for (i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP_2(dt_acc) }
+            for (i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP_MAX(dt_acc) INNER_LOOP_COPY }
         }
         #pragma omp parallel
         {
@@ -168,26 +173,31 @@ int main(int argc, char *argv[]) {
                 int lower_end_i   = (ROWS+DEPTH*2)-1-d;
                 if(my_PE_num == 0) upper_start_i = fmax(upper_start_i, DEPTH);
                 if(my_PE_num == npes-1) lower_end_i = fmin(lower_end_i, ROWS+DEPTH);
-                #pragma omp for nowait
-                for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_1 }
-                #pragma omp for
-                for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_1 }
-            }
                 
+                #pragma omp for nowait
+                for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_CALC }
+                #pragma omp for
+                for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_CALC }
+                
+                if (d != DEPTH-1) {
+                    #pragma omp for nowait
+                    for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_COPY }
+                    #pragma omp for
+                    for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_COPY }
+                }
+            }
+            
             {
                 int upper_start_i = DEPTH;
                 int upper_end_i   = ROW_GPU_FIRST;
                 int lower_start_i = ROW_GPU_LAST ;
                 int lower_end_i   = (ROWS+DEPTH*2)-DEPTH;
                 #pragma omp for nowait reduction(max:dt_omp_1)
-                for (i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_2(dt_omp_1) }
+                for (i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_MAX(dt_omp_1) INNER_LOOP_COPY }
                 #pragma omp for nowait reduction(max:dt_omp_2)
-                for (i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_2(dt_omp_2) }
+                for (i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_MAX(dt_omp_2) INNER_LOOP_COPY }
             }
         }
-        
-        #undef INNER_LOOP_1
-        #undef INNER_LOOP_2
         
         dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
         
@@ -197,7 +207,7 @@ int main(int argc, char *argv[]) {
 
         // send bottom real row down
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Send(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+            MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
         }
 
         // receive the bottom row from above into our top ghost row
@@ -207,7 +217,7 @@ int main(int argc, char *argv[]) {
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
-            MPI_Send(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
+            MPI_Send(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
         }
 
         // receive the top row from below into our bottom ghost row
@@ -220,10 +230,8 @@ int main(int argc, char *argv[]) {
         MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
         // periodically print test values - only for PE in lower corner
-        if((iteration % 1) == 0) {
-        // TODO: The original program shows per "100"
-            if (my_PE_num == npes-1){
-                //#pragma acc update host(Temperature)
+        if((iteration % 100) == 0) {
+            if (my_PE_num == npes-1 ){
                 track_progress(iteration, dt_global);
             }
         }
@@ -277,19 +285,19 @@ void initialize(){
 
     // Left and right boundaries
     for (i = 0; i < ROWS+DEPTH*2; i++) {
-        Temperature_last[i][0] = 0.0;
-        Temperature_last[i][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*(i-DEPTH+1);
+        Temperature[i][0] = Temperature_last[i][0] = 0.0;
+        Temperature[i][COLUMNS+1] = Temperature_last[i][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*(i-DEPTH+1);
     }
 
     // Top boundary (PE 0 only)
     if (my_PE_num == 0)
         for (j = 0; j <= COLUMNS+1; j++)
-            Temperature_last[DEPTH-1][j] = 0.0;
+            Temperature[DEPTH-1][j] = Temperature_last[DEPTH-1][j] = 0.0;
 
     // Bottom boundary (Last PE only)
     if (my_PE_num == npes-1)
         for (j=0; j<=COLUMNS+1; j++)
-            Temperature_last[DEPTH+ROWS][j] = (100.0/COLUMNS) * j;
+            Temperature[DEPTH+ROWS][j] = Temperature_last[DEPTH+ROWS][j] = (100.0/COLUMNS) * j;
 
 }
 
