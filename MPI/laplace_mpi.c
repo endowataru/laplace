@@ -48,6 +48,14 @@
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
+#ifdef ENABLE_LARGE
+    #define CHECK_ROW   8064
+    #define CHECK_COL   10702
+#else
+    #define CHECK_ROW   504
+    #define CHECK_COL   622
+#endif
+
 double Temperature[ROWS+2*DEPTH][COLUMNS+2];
 double Temperature_last[ROWS+2*DEPTH][COLUMNS+2];
 
@@ -113,8 +121,8 @@ int main(int argc, char *argv[]) {
 			//This code block is to surpress updates of bounderies.
 		    int start_i=1+d;
 			int end_i=ROWS+DEPTH*2-2-d;
-			if(my_PE_num == 0) start_i = max(start_i, DEPTH);
-			if(my_PE_num == npes-1) end_i = min(end_i, ROWS+DEPTH-1)
+			if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
+			if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
 
 			for(i = start_i; i <= end_i; i++) {
 				for(j = 1; j <= COLUMNS; j++) {
@@ -180,6 +188,14 @@ int main(int argc, char *argv[]) {
 	printf("Total time was %f seconds.\n", elapsed_time);
     }
 
+    if (CHECK_ROW/ROWS == my_PE_num) {
+      printf("PE %d: T(%d,%d) = %lf (%lf)\n",
+	     my_PE_num, CHECK_ROW, CHECK_COL,
+	     Temperature_last[CHECK_ROW % ROWS][CHECK_COL],
+	     Temperature[CHECK_ROW % ROWS][CHECK_COL]
+	     // TODO: Temperature becomes 0.0
+	     );
+    }
     MPI_Finalize();
 }
 
