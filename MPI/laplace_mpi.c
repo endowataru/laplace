@@ -49,7 +49,7 @@
 #define UP       101
 
 // Original Parmeters
-#define DEPTH	4 //It must be lower than ROWS
+#define DEPTH	179 //It must be lower than ROWS
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
@@ -118,7 +118,8 @@ int main(int argc, char *argv[]) {
 	if (my_PE_num==0) start_time = MPI_Wtime();
 
 	initialize(npes, my_PE_num);
-
+	
+	#pragma acc data copy(Temperature_last), copy(Temperature)
 	while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
 
 		for(int d=0;d<DEPTH;d++){
@@ -131,12 +132,13 @@ int main(int argc, char *argv[]) {
 			if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
 			if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
 			// if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
-
+			#pragma acc kernels
 			for(i = start_i; i <= end_i; i++) {
 				for(j = 1; j <= COLUMNS; j++) {
 					Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
 				}
 			}
+			#pragma acc kernels
 			for(i = start_i; i <= end_i; i++){
 				for(j = 1; j <= COLUMNS; j++){
 					dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
@@ -147,6 +149,7 @@ int main(int argc, char *argv[]) {
 
 		// COMMUNICATION PHASE: send ghost rows for next iteration
 
+		#pragma acc update host(Temperature), host(Temperature_last)
 		// send bottom real row down
 		if(my_PE_num != npes-1){             //unless we are bottom PE
 			MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
@@ -167,6 +170,7 @@ int main(int argc, char *argv[]) {
 			MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
 		}
 
+		#pragma acc update device(Temperature),device(Temperature_last)
 		// find global dt
 		MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 		MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
