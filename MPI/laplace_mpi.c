@@ -30,8 +30,10 @@
 #include <math.h>
 #include <mpi.h>
 
-//#define ENABLE_LARGE
+#define ENABLE_LARGE
 //#define ENABLE_ACC_TEMPORAL_BLOCKING
+
+#define ENABLE_DOUBLE_BUFFERING
 
 #ifdef ENABLE_LARGE
     #define COLUMNS       10752
@@ -69,8 +71,16 @@
     #define CHECK_COL   622
 #endif
 
+#ifdef ENABLE_DOUBLE_BUFFERING
+double Temperature_0[ROWS+2*DEPTH][COLUMNS+2];
+double Temperature_1[ROWS+2*DEPTH][COLUMNS+2];
+
+double (* restrict Temperature_last)[COLUMNS+2] = Temperature_0;
+double (* restrict Temperature)[COLUMNS+2] = Temperature_1;
+#else
 double Temperature[ROWS+2*DEPTH][COLUMNS+2];
 double Temperature_last[ROWS+2*DEPTH][COLUMNS+2];
+#endif
 
 void initialize();
 void track_progress(int iter, double dt);
@@ -90,11 +100,12 @@ int main(int argc, char *argv[]) {
     double     dt_global=100;       // delta t across all PEs
     MPI_Status status;              // status returned by MPI calls
 
+    // MPI_Request ireq;
+
     // the usual MPI startup routines
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_PE_num);
     MPI_Comm_size(MPI_COMM_WORLD, &npes);
-
 
     if (my_PE_num == 0)
     {
@@ -128,7 +139,11 @@ int main(int argc, char *argv[]) {
     //initialize(npes, my_PE_num);
     initialize();
     
+    #ifdef ENABLE_DOUBLE_BUFFERING
+    #pragma acc data copyin(Temperature_0), create(Temperature_1)
+    #else
     #pragma acc data copyin(Temperature_last), create(Temperature)
+    #endif
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
         // main calculation: average my four neighbors
         #define INNER_LOOP_CALC \
@@ -207,6 +222,9 @@ int main(int argc, char *argv[]) {
         
         #else // ENABLE_ACC_TEMPORAL_BLOCKING
         for(int d=0;d<DEPTH;d++){
+            Temperature_last = ((iteration+d) % 2 == 1) ? Temperature_0 : Temperature_1;
+            Temperature      = ((iteration+d) % 2 == 1) ? Temperature_1 : Temperature_0;
+            
             // main calculation: average my four neighborsa
             
             #pragma acc parallel async(1)
@@ -237,9 +255,11 @@ int main(int argc, char *argv[]) {
                                host(Temperature[ROW_GPU_LAST-1:1][1:COLUMNS]), \
                                device(Temperature[ROW_GPU_LAST:1][1:COLUMNS])
             
+            #ifndef ENABLE_DOUBLE_BUFFERING
             if(d != DEPTH-1) {
                 for(i = start_i; i <= end_i; i++){ INNER_LOOP_COPY }
             }
+            #endif
         }
 
         #if 1
@@ -262,7 +282,16 @@ int main(int argc, char *argv[]) {
         
         #pragma omp parallel for reduction(max:dt)
         for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
+<<<<<<< HEAD
             INNER_LOOP_MAX(dt) INNER_LOOP_COPY
+=======
+            for(j = 1; j <= COLUMNS; j++){
+                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+                #ifndef ENABLE_DOUBLE_BUFFERING
+                Temperature_last[i][j] = Temperature[i][j];
+                #endif
+            }
+>>>>>>> master
         }
         #endif
         
@@ -275,21 +304,33 @@ int main(int argc, char *argv[]) {
         // send bottom real row down
         if(my_PE_num != npes-1){             //unless we are bottom PE
             MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+            /* MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq); */
         }
 
         // receive the bottom row from above into our top ghost row
         if(my_PE_num != 0){                  //unless we are top PE
+            #ifdef ENABLE_DOUBLE_BUFFERING
+            MPI_Recv(&Temperature[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+            #else
             MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+            /* MPI_Irecv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq); */
+            #endif
         }
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
             MPI_Send(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
+            /* MPI_Isend(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq); */
         }
 
         // receive the top row from below into our bottom ghost row
         if(my_PE_num != npes-1){             //unless we are bottom PE
+            #ifdef ENABLE_DOUBLE_BUFFERING
+            MPI_Recv(&Temperature[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+            #else
             MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+            /* MPI_Irecv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq); */
+            #endif
         }
 
         // find global dt
