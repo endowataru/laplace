@@ -73,8 +73,8 @@
 double Temperature_0[ROWS+2*DEPTH][COLUMNS+2];
 double Temperature_1[ROWS+2*DEPTH][COLUMNS+2];
 
-double (* restrict Temperature_last)[COLUMNS+2] = Temperature_0;
-double (* restrict Temperature)[COLUMNS+2] = Temperature_1;
+#define Temperature_last    ((temp_iter & 1 == 1) ? Temperature_0 : Temperature_1)
+#define Temperature         ((temp_iter & 1 == 1) ? Temperature_1 : Temperature_0)
 #else
 double Temperature[ROWS+2*DEPTH][COLUMNS+2];
 double Temperature_last[ROWS+2*DEPTH][COLUMNS+2];
@@ -137,6 +137,8 @@ int main(int argc, char *argv[]) {
     //initialize(npes, my_PE_num);
     initialize();
     
+    int temp_iter = 0;
+    
     #ifdef ENABLE_DOUBLE_BUFFERING
     #pragma acc data copyin(Temperature_0), create(Temperature_1)
     #else
@@ -163,9 +165,7 @@ int main(int argc, char *argv[]) {
         double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
         
         for(int d=0;d<DEPTH;d++){
-            Temperature_last = ((iteration+d) % 2 == 1) ? Temperature_0 : Temperature_1;
-            Temperature      = ((iteration+d) % 2 == 1) ? Temperature_1 : Temperature_0;
-            
+            temp_iter = iteration+d;
             // main calculation: average my four neighborsa
             
             #pragma acc parallel async(1)
@@ -299,6 +299,9 @@ void initialize(){
 
     double tMin, tMax;  //Local boundary limits
     int i,j;
+    #ifdef ENABLE_DOUBLE_BUFFERING
+    int temp_iter = 1;
+    #endif
 
     memset(Temperature_last, 0, sizeof(Temperature_last));
 
@@ -330,6 +333,9 @@ void initialize(){
 void track_progress(int iteration, double dt) {
 
     int i;
+    #ifdef ENABLE_DOUBLE_BUFFERING
+    int temp_iter = iteration+DEPTH-1;
+    #endif
 
     printf("---- Iteration %d, dt = %f ----\n", iteration, dt);
     // output global coordinates so user doesn't have to understand decompositi
@@ -339,7 +345,7 @@ void track_progress(int iteration, double dt) {
     printf("\n");
 }
 
-
+#if 0
 void debug_dumpallarry(){
     for(int i =0;i<ROWS+2*DEPTH;i++){
         for(int j=0;j<COLUMNS+2;j++){
@@ -349,4 +355,4 @@ void debug_dumpallarry(){
     }
     printf("\n");
 }
-
+#endif
