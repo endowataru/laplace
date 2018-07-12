@@ -33,7 +33,7 @@
 //#define ENABLE_LARGE
 
 #ifdef ENABLE_LARGE
-    #define COLUMNS       10752
+    #Define COLUMNS       10752
     #define ROWS_GLOBAL   10752        // this is a "global" row count
 #else
     #define COLUMNS       672
@@ -84,11 +84,12 @@ int main(int argc, char *argv[]) {
     double     dt_global=100;       // delta t across all PEs
     MPI_Status status;              // status returned by MPI calls
 
+    // MPI_Request ireq;
+
     // the usual MPI startup routines
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_PE_num);
     MPI_Comm_size(MPI_COMM_WORLD, &npes);
-
 
     if (my_PE_num == 0)
     {
@@ -157,22 +158,27 @@ int main(int argc, char *argv[]) {
 
         // send bottom real row down
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Send(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+	  MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+	  /* MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq); */
+
         }
 
         // receive the bottom row from above into our top ghost row
         if(my_PE_num != 0){                  //unless we are top PE
-            MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+	  MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+          /* MPI_Irecv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq); */
         }
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
-            MPI_Send(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
+	  MPI_Send(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
+	  /* MPI_Isend(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq); */
         }
 
         // receive the top row from below into our bottom ghost row
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+	  MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+	  /* MPI_Irecv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq); */
         }
 
         // find global dt
