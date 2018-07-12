@@ -158,7 +158,7 @@ int main(int argc, char *argv[]) {
 
         // send bottom real row down
         if(my_PE_num != npes-1){             //unless we are bottom PE
-	  MPI_Send(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+	  MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
 	  /* MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq); */
 
         }
