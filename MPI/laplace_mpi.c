@@ -177,62 +177,48 @@ int main(int argc, char *argv[]) {
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
         // send bottom real row down
-	int ireqi = 0;
+        int ireqi = 0;
         if(my_PE_num != npes-1){             //unless we are bottom PE
-<<<<<<< HEAD
-	  MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
-	  ireqi++;
-=======
-            MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
-            /* MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq); */
->>>>>>> 9f8a037c2b0661d115c9b08ad4b87e3a9d160e01
+            MPI_Isend(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
+            ireqi++;
         }
 
         // receive the bottom row from above into our top ghost row
         if(my_PE_num != 0){                  //unless we are top PE
-<<<<<<< HEAD
-          MPI_Irecv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
-	  ireqi++;
-=======
-            #ifdef ENABLE_DOUBLE_BUFFERING
-            MPI_Recv(&Temperature[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
-            #else
-            MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
-            /* MPI_Irecv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq); */
-            #endif
->>>>>>> 9f8a037c2b0661d115c9b08ad4b87e3a9d160e01
+            MPI_Irecv(
+                #ifdef ENABLE_DOUBLE_BUFFERING
+                &Temperature[0][1],
+                #else
+                &Temperature_last[0][1],
+                #endif
+                (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
+            
+            ireqi++;
         }
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
-<<<<<<< HEAD
-	  MPI_Isend(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
-	  ireqi++;
-=======
-            MPI_Send(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
-            /* MPI_Isend(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq); */
->>>>>>> 9f8a037c2b0661d115c9b08ad4b87e3a9d160e01
+            MPI_Isend(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
+            ireqi++;
         }
 
         // receive the top row from below into our bottom ghost row
         if(my_PE_num != npes-1){             //unless we are bottom PE
-<<<<<<< HEAD
-	  MPI_Irecv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
-	  ireqi++;
-=======
-            #ifdef ENABLE_DOUBLE_BUFFERING
-            MPI_Recv(&Temperature[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
-            #else
-            MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
-            /* MPI_Irecv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq); */
-            #endif
->>>>>>> 9f8a037c2b0661d115c9b08ad4b87e3a9d160e01
+            MPI_Irecv(
+                #ifdef ENABLE_DOUBLE_BUFFERING
+                &Temperature[ROWS+DEPTH][1],
+                #else
+                &Temperature_last[ROWS+DEPTH][1],
+                #endif
+                (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
+            
+            ireqi++;
         }
 
-	MPI_Waitall(ireqi, ireq, statuses);
+        MPI_Waitall(ireqi, ireq, statuses);
 
         // find global dt
-	MPI_Allreduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        MPI_Allreduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
         // periodically print test values - only for PE in lower corner
         if((iteration % 100) == 1) {
