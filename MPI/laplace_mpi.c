@@ -81,10 +81,10 @@ int main(int argc, char *argv[]) {
     double dt;
     double start_time, stop_time, elapsed_time;
 
-    double     dt_global=100;       // delta t across all PEs
-    MPI_Status status;              // status returned by MPI calls
+    double     dt_global=100;         // delta t across all PEs
+    MPI_Status statuses[3];           // status returned by MPI calls
 
-    // MPI_Request ireq;
+    MPI_Request ireq[3];
 
     // the usual MPI startup routines
     MPI_Init(&argc, &argv);
@@ -161,32 +161,34 @@ int main(int argc, char *argv[]) {
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
         // send bottom real row down
+	int ireqi = 0;
         if(my_PE_num != npes-1){             //unless we are bottom PE
-	  MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
-	  /* MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq); */
+	  MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
+	  ireqi++;
         }
 
         // receive the bottom row from above into our top ghost row
         if(my_PE_num != 0){                  //unless we are top PE
-	  MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
-          /* MPI_Irecv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq); */
+          MPI_Irecv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
+	  ireqi++;
         }
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
-	  MPI_Send(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
-	  /* MPI_Isend(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq); */
+	  MPI_Isend(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
+	  ireqi++;
         }
 
         // receive the top row from below into our bottom ghost row
         if(my_PE_num != npes-1){             //unless we are bottom PE
-	  MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
-	  /* MPI_Irecv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq); */
+	  MPI_Irecv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
+	  ireqi++;
         }
 
+	MPI_Waitall(ireqi, ireq, statuses);
+
         // find global dt
-        MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-        MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Allreduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
         // periodically print test values - only for PE in lower corner
         if((iteration % 100) == 0) {
