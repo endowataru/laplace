@@ -83,26 +83,26 @@ int main(int argc, char *argv[]) {
 
 
     if (my_PE_num == 0)
-      {
-	printf("Running on %d MPI processes\n\n", npes);
-      }
+    {
+        printf("Running on %d MPI processes\n\n", npes);
+    }
 
     // verify only NPES PEs are being used
     if(npes != NPES) {
-      if(my_PE_num==0) {
-        printf("This code must be run with %d PEs\n", NPES);
-      }
-      MPI_Finalize();
-      exit(1);
+        if(my_PE_num==0) {
+            printf("This code must be run with %d PEs\n", NPES);
+        }
+        MPI_Finalize();
+        exit(1);
     }
 
     // PE 0 asks for input
     if(my_PE_num==0) {
-      //      printf("Maximum iterations [100-4000]?\n");
-      //      fflush(stdout); // Not always necessary, but can be helpful
-      //      scanf("%d", &max_iterations);
-      max_iterations = 4000;
-      printf("Maximum iterations = %d\n", max_iterations);
+        //      printf("Maximum iterations [100-4000]?\n");
+        //      fflush(stdout); // Not always necessary, but can be helpful
+        //      scanf("%d", &max_iterations);
+        max_iterations = 4000;
+        printf("Maximum iterations = %d\n", max_iterations);
 
     }
 
@@ -115,21 +115,21 @@ int main(int argc, char *argv[]) {
 
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
 
-		for(int d=0;d<DEPTH;d++){
-        // main calculation: average my four neighborsa
+        for(int d=0;d<DEPTH;d++){
+            // main calculation: average my four neighborsa
 
-			//This code block is to surpress updates of bounderies.
-		    int start_i=1+d;
-			int end_i=ROWS+DEPTH*2-2-d;
-			if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
-			if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
+            //This code block is to surpress updates of bounderies.
+            int start_i=1+d;
+            int end_i=ROWS+DEPTH*2-2-d;
+            if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
+            if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
 
-			for(i = start_i; i <= end_i; i++) {
-				for(j = 1; j <= COLUMNS; j++) {
-					Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
-				}
-			}
-		}
+            for(i = start_i; i <= end_i; i++) {
+                for(j = 1; j <= COLUMNS; j++) {
+                    Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
+                }
+            }
+        }
 
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
@@ -157,23 +157,23 @@ int main(int argc, char *argv[]) {
 
         for(i = 1; i <= ROWS; i++){
             for(j = 1; j <= COLUMNS; j++){
-	        dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-	        Temperature_last[i][j] = Temperature[i][j];
+                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+                Temperature_last[i][j] = Temperature[i][j];
             }
         }
 
         // find global dt
         MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
         // periodically print test values - only for PE in lower corner
         if((iteration % 100) == 0) {
             if (my_PE_num == npes-1){
-	      track_progress(iteration, dt_global);
-	    }
+                track_progress(iteration, dt_global);
+            }
         }
 
-	iteration+=DEPTH;
+        iteration+=DEPTH;
     }
 
     // Slightly more accurate timing and cleaner output
@@ -182,19 +182,19 @@ int main(int argc, char *argv[]) {
     // PE 0 finish timing and output values
     if (my_PE_num==0){
         stop_time = MPI_Wtime();
-	elapsed_time = stop_time - start_time;
+        elapsed_time = stop_time - start_time;
 
-	printf("\nMax error at iteration %d was %20.15g\n", iteration-1, dt_global);
-	printf("Total time was %f seconds.\n", elapsed_time);
+        printf("\nMax error at iteration %d was %20.15g\n", iteration-1, dt_global);
+        printf("Total time was %f seconds.\n", elapsed_time);
     }
 
     if (CHECK_ROW/ROWS == my_PE_num) {
-      printf("PE %d: T(%d,%d) = %lf (%lf)\n",
-	     my_PE_num, CHECK_ROW, CHECK_COL,
-	     Temperature_last[CHECK_ROW % ROWS][CHECK_COL],
-	     Temperature[CHECK_ROW % ROWS][CHECK_COL]
-	     // TODO: Temperature becomes 0.0
-	     );
+        printf("PE %d: T(%d,%d) = %lf (%lf)\n",
+                my_PE_num, CHECK_ROW, CHECK_COL,
+                Temperature_last[CHECK_ROW % ROWS][CHECK_COL],
+                Temperature[CHECK_ROW % ROWS][CHECK_COL]
+                // TODO: Temperature becomes 0.0
+              );
     }
     MPI_Finalize();
 }
@@ -203,30 +203,30 @@ int main(int argc, char *argv[]) {
 
 void initialize(){
 
-	double tMin, tMax;  //Local boundary limits
-	int i,j;
+    double tMin, tMax;  //Local boundary limits
+    int i,j;
 
-	memset(Temperature_last, 0, sizeof(Temperature_last));
+    memset(Temperature_last, 0, sizeof(Temperature_last));
 
-	// Local boundry condition endpoints
-	tMin = (my_PE_num)*100.0/npes;
-	tMax = (my_PE_num+1)*100.0/npes;
+    // Local boundry condition endpoints
+    tMin = (my_PE_num)*100.0/npes;
+    tMax = (my_PE_num+1)*100.0/npes;
 
-	// Left and right boundaries
-	for (i = 0; i <= ROWS+1; i++) {
-		Temperature_last[i+DEPTH-1][0] = 0.0;
-		Temperature_last[i+DEPTH-1][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*i;
-	}
+    // Left and right boundaries
+    for (i = 0; i <= ROWS+1; i++) {
+        Temperature_last[i+DEPTH-1][0] = 0.0;
+        Temperature_last[i+DEPTH-1][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*i;
+    }
 
-	// Top boundary (PE 0 only)
-	if (my_PE_num == 0)
-		for (j = 0; j <= COLUMNS+1; j++)
-			Temperature_last[DEPTH-1][j] = 0.0;
+    // Top boundary (PE 0 only)
+    if (my_PE_num == 0)
+        for (j = 0; j <= COLUMNS+1; j++)
+            Temperature_last[DEPTH-1][j] = 0.0;
 
-	// Bottom boundary (Last PE only)
-	if (my_PE_num == npes-1)
-		for (j=0; j<=COLUMNS+1; j++)
-			Temperature_last[DEPTH+ROWS][j] = (100.0/COLUMNS) * j;
+    // Bottom boundary (Last PE only)
+    if (my_PE_num == npes-1)
+        for (j=0; j<=COLUMNS+1; j++)
+            Temperature_last[DEPTH+ROWS][j] = (100.0/COLUMNS) * j;
 
 }
 
@@ -240,7 +240,7 @@ void track_progress(int iteration, double dt) {
     printf("---- Iteration %d, dt = %f ----\n", iteration, dt);
     // output global coordinates so user doesn't have to understand decompositi
     for(i = 5; i >= 3; i--) {
-      printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS-i][COLUMNS-i]);
+        printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS-i][COLUMNS-i]);
     }
     printf("\n");
 }
