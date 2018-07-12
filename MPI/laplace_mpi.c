@@ -31,6 +31,7 @@
 #include <mpi.h>
 
 //#define ENABLE_LARGE
+//#define ENABLE_ACC_TEMPORAL_BLOCKING
 
 #ifdef ENABLE_LARGE
     #define COLUMNS       10752
@@ -56,7 +57,7 @@
 #define UP       101
 
 // Original Parmeters
-#define DEPTH	1 //It must be lower than ROWS
+#define DEPTH	4 //It must be lower than ROWS
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
@@ -127,7 +128,9 @@ int main(int argc, char *argv[]) {
     //initialize(npes, my_PE_num);
     initialize();
     
+    #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
     #pragma acc data copyin(Temperature_last), create(Temperature)
+    #endif
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
         // main calculation: average my four neighbors
         #define INNER_LOOP_CALC \
@@ -146,6 +149,7 @@ int main(int argc, char *argv[]) {
                 Temperature_last[i][j] = Temperature[i][j]; \
             }
         
+        #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
         double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
         
         #pragma acc parallel async(1)
@@ -203,6 +207,47 @@ int main(int argc, char *argv[]) {
         #pragma acc wait(1)
         
         dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
+        
+        #else // ENABLE_ACC_TEMPORAL_BLOCKING
+        for(int d=0;d<DEPTH;d++){
+            // main calculation: average my four neighborsa
+
+            //This code block is to surpress updates of bounderies.
+            int start_i=1+d;
+            int end_i=ROWS+DEPTH*2-2-d;
+            if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
+            if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
+            // if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
+
+            for(i = start_i; i <= end_i; i++) {
+                INNER_LOOP_CALC
+                /*for(j = 1; j <= COLUMNS; j++) {
+                    Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
+                }*/
+            }
+            if(d!=DEPTH-1){
+                for(i = start_i; i <= end_i; i++){
+                    INNER_LOOP_COPY
+                    /*for(j = 1; j <= COLUMNS; j++){
+                        Temperature_last[i][j]=Temperature[i][j];
+                    }*/
+                }
+            }
+
+        }
+
+        dt = 0;
+
+        for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
+            INNER_LOOP_MAX(dt)
+            INNER_LOOP_COPY
+            /*for(j = 1; j <= COLUMNS; j++){
+                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+                Temperature_last[i][j] = Temperature[i][j];
+            }*/
+        }
+        
+        #endif // ENABLE_ACC_TEMPORAL_BLOCKING
 
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
