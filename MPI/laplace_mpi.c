@@ -128,9 +128,6 @@ int main(int argc, char *argv[]) {
     
     #pragma acc data copyin(Temperature_last), create(Temperature)
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
-#if 0
-<<<<<<< HEAD
-#endif
         // main calculation: average my four neighbors
         #define INNER_LOOP_1 { \
             int j; \
@@ -187,36 +184,6 @@ int main(int argc, char *argv[]) {
                 #pragma omp for nowait reduction(max:dt_omp_2)
                 for (i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_2(dt_omp_2) }
             }
-#if 0
-=======
-
-        for(int d=0;d<DEPTH;d++){
-            // main calculation: average my four neighborsa
-
-            //This code block is to surpress updates of bounderies.
-            int start_i=1+d;
-            int end_i=ROWS+DEPTH*2-2-d;
-            if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
-            if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
-            // if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
-
-            for(i = start_i; i <= end_i; i++) {
-                for(j = 1; j <= COLUMNS; j++) {
-                    Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
-                }
-                dt = 0;
-
-                for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
-                    for(j = 1; j <= COLUMNS; j++){
-                        dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-                    }
-                }
-                for(i = start_i; i <= end_i; i++){
-                    for(j = 1; j <= COLUMNS; j++){
-                        Temperature_last[i][j]=Temperature[i][j];
-                    }
-                }
-#endif
         }
         
         #undef INNER_LOOP_1
@@ -247,41 +214,6 @@ int main(int argc, char *argv[]) {
         if(my_PE_num != npes-1){             //unless we are bottom PE
             MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
         }
-
-        //dt = 0.0;
-
-        //#pragma omp parallel for collapse(2)
-        #if 0
-        {
-        double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
-        
-        #define INNER_LOOP(dt_red) { \
-            int j; \
-            for(j = 1; j <= COLUMNS; j++){ \
-                dt_red = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt_red); \
-                Temperature_last[i][j] = Temperature[i][j]; \
-            } \
-        }
-        
-        #pragma acc kernels
-        for (i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP(dt_acc) }
-        #pragma omp parallel
-        {
-            int upper_start_i = DEPTH;
-            int upper_end_i   = ROW_GPU_FIRST;
-            int lower_start_i = ROW_GPU_LAST ;
-            int lower_end_i   = (ROWS+DEPTH*2)-DEPTH;
-            #pragma omp for nowait reduction(max:dt_omp_1)
-            for (i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP(dt_omp_1) }
-            #pragma omp for nowait reduction(max:dt_omp_2)
-            for (i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP(dt_omp_2) }
-        }
-        
-        dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
-        
-        #undef INNER_LOOP
-        }
-        #endif
 
         // find global dt
         MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
