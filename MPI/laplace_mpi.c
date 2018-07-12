@@ -51,7 +51,7 @@
 #define UP       101
 
 // Original Parmeters
-#define DEPTH	2 //It must be lower than ROWS
+#define DEPTH	4 //It must be lower than ROWS
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
@@ -139,18 +139,22 @@ int main(int argc, char *argv[]) {
                     Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
                 }
             }
-
-            dt = 0;
-
-            for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
-                for(j = 1; j <= COLUMNS; j++){
-                    dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+            if(d!=DEPTH-1){
+                for(i = start_i; i <= end_i; i++){
+                    for(j = 1; j <= COLUMNS; j++){
+                        Temperature_last[i][j]=Temperature[i][j];
+                    }
                 }
             }
-            for(i = start_i; i <= end_i; i++){
-                for(j = 1; j <= COLUMNS; j++){
-                    Temperature_last[i][j]=Temperature[i][j];
-                }
+
+        }
+
+        dt = 0;
+
+        for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
+            for(j = 1; j <= COLUMNS; j++){
+                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+                Temperature_last[i][j] = Temperature[i][j];
             }
         }
 
@@ -160,7 +164,7 @@ int main(int argc, char *argv[]) {
         if(my_PE_num != npes-1){             //unless we are bottom PE
 	  MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
 	  /* MPI_Isend(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq); */
-
+            MPI_Send(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
         }
 
         // receive the bottom row from above into our top ghost row
@@ -173,6 +177,7 @@ int main(int argc, char *argv[]) {
         if(my_PE_num != 0){                    //unless we are top PE
 	  MPI_Send(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
 	  /* MPI_Isend(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq); */
+            MPI_Send(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
         }
 
         // receive the top row from below into our bottom ghost row
@@ -186,9 +191,8 @@ int main(int argc, char *argv[]) {
         MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
         // periodically print test values - only for PE in lower corner
-        if((iteration % 1) == 0) {
-        // TODO: The original program shows per "100"
-            if (my_PE_num == npes-1){
+        if((iteration % 100) == 0) {
+            if (my_PE_num == npes-1 ){
                 track_progress(iteration, dt_global);
             }
         }
@@ -237,19 +241,19 @@ void initialize(){
 
     // Left and right boundaries
     for (i = 0; i < ROWS+DEPTH*2; i++) {
-        Temperature_last[i][0] = 0.0;
-        Temperature_last[i][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*(i-DEPTH+1);
+        Temperature[i][0] = Temperature_last[i][0] = 0.0;
+        Temperature[i][COLUMNS+1] = Temperature_last[i][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*(i-DEPTH+1);
     }
 
     // Top boundary (PE 0 only)
     if (my_PE_num == 0)
         for (j = 0; j <= COLUMNS+1; j++)
-            Temperature_last[DEPTH-1][j] = 0.0;
+            Temperature[DEPTH-1][j] = Temperature_last[DEPTH-1][j] = 0.0;
 
     // Bottom boundary (Last PE only)
     if (my_PE_num == npes-1)
         for (j=0; j<=COLUMNS+1; j++)
-            Temperature_last[DEPTH+ROWS][j] = (100.0/COLUMNS) * j;
+            Temperature[DEPTH+ROWS][j] = Temperature_last[DEPTH+ROWS][j] = (100.0/COLUMNS) * j;
 
 }
 
