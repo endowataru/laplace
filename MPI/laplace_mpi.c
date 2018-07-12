@@ -219,19 +219,9 @@ int main(int argc, char *argv[]) {
             if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
             // if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
 
-            for(i = start_i; i <= end_i; i++) {
-                INNER_LOOP_CALC
-                /*for(j = 1; j <= COLUMNS; j++) {
-                    Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
-                }*/
-            }
-            if(d!=DEPTH-1){
-                for(i = start_i; i <= end_i; i++){
-                    INNER_LOOP_COPY
-                    /*for(j = 1; j <= COLUMNS; j++){
-                        Temperature_last[i][j]=Temperature[i][j];
-                    }*/
-                }
+            for(i = start_i; i <= end_i; i++) { INNER_LOOP_CALC }
+            if(d != DEPTH-1) {
+                for(i = start_i; i <= end_i; i++){ INNER_LOOP_COPY }
             }
 
         }
@@ -239,12 +229,7 @@ int main(int argc, char *argv[]) {
         dt = 0;
 
         for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
-            INNER_LOOP_MAX(dt)
-            INNER_LOOP_COPY
-            /*for(j = 1; j <= COLUMNS; j++){
-                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-                Temperature_last[i][j] = Temperature[i][j];
-            }*/
+            INNER_LOOP_MAX(dt) INNER_LOOP_COPY
         }
         
         #endif // ENABLE_ACC_TEMPORAL_BLOCKING
