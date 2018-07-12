@@ -1,7 +1,7 @@
 TARGET=a.out
 
 CC=mpicc
-CPPFLAGS=-O3 -mp -acc -Minfo=accel
+CFLAGS=-O3 -mp -acc -Minfo=accel
 
 SRC= laplace_mpi.c
 OBJ=$(SRC:.cpp=.o)
@@ -11,10 +11,10 @@ OBJ=$(SRC:.cpp=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJ)
-	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $(TARGET) $(OBJ)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(TARGET) $(OBJ)
 
 .c.o:
-	$(CC) $(CPPFLAGS) -c $<
+	$(CC) $(CFLAGS) -c $<
 
 clean:
 	rm -f $(TARGET) $(OBJ)
