@@ -46,7 +46,8 @@
 #define NPES            4        // number of processors
 #define ROWS (ROWS_GLOBAL/NPES)  // number of real local rows
 
-#define ROWS_GPU        100
+#define ROWS_GPU        (ROWS/4*3)
+    // TODO
 #define ROW_GPU_FIRST   ((ROWS-ROWS_GPU)/2)
 #define ROW_GPU_LAST    (ROW_GPU_FIRST+ROWS_GPU)
 
