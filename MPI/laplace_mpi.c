@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
         
         double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
         
-        #pragma acc parallel
+        #pragma acc parallel async(1)
         {
             for (int d = 0; d < DEPTH; d++) {
                 int start_i = ROW_GPU_FIRST-(DEPTH-1)+d;
@@ -200,9 +200,9 @@ int main(int argc, char *argv[]) {
             }
         }
         
-        dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
+        #pragma acc wait(1)
         
-        //#pragma acc kernels wait(1)
+        dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
 
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
