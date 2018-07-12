@@ -127,25 +127,6 @@ int main(int argc, char *argv[]) {
     
     #pragma acc data copy(Temperature_last), create(Temperature)
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
-        #if 0
-<<<<<<< HEAD
-
-        for(int d=0;d<DEPTH;d++){
-            // main calculation: average my four neighborsa
-
-            //This code block is to surpress updates of bounderies.
-            int start_i=1+d;
-            int end_i=ROWS+DEPTH*2-2-d;
-            if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
-            if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
-
-            for(i = start_i; i <= end_i; i++) {
-                for(j = 1; j <= COLUMNS; j++) {
-                    Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
-                }
-            }
-=======
-    #endif
         // main calculation: average my four neighbors
         #define INNER_LOOP { \
             int j; \
