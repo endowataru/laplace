@@ -1,0 +1,9 @@
+#!/bin/bash
+#SBATCH -p RM
+#SBATCH -res=ihssrm
+#SBATCH --account ac560tp
+#SBATCH -N 4
+#SBATCH --time=00:02:00
+
+mpirun -n  4 ./a.out
+
