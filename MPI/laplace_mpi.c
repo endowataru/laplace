@@ -49,9 +49,10 @@
 
 double Temperature[ROWS+2][COLUMNS+2];
 double Temperature_last[ROWS+2][COLUMNS+2];
+double buf_track[N_BUF_TRACK];
 
 void initialize(int npes, int my_PE_num);
-void track_progress(int const iter, double* buf_track);
+void track_progress(int const iter);
 void output(int my_pe, int iteration);
 
 
@@ -67,7 +68,7 @@ int main(int argc, char *argv[]) {
     double     dt_global=100;       // delta t across all PEs
     MPI_Status status;              // status returned by MPI calls
 
-    double buf_track[N_BUF_TRACK];
+
     int i_buf;
 
     // the usual MPI startup routines
@@ -158,11 +159,11 @@ int main(int argc, char *argv[]) {
 	    // track_progress_org(iteration, dt_global);
 	  }
         }
-
 	iteration++;
     }
 
-    track_progress(i_buf+3, buf_track);
+    if (my_PE_num == npes-1)
+      track_progress(i_buf+3);
 
     // Slightly more accurate timing and cleaner output 
     MPI_Barrier(MPI_COMM_WORLD);
@@ -216,17 +217,17 @@ void initialize(int npes, int my_PE_num){
 
 // only called by last PE
 // print diagonal in bottom right corner where most action is
-void track_progress(int const iter, double* buf_track) {
+void track_progress(int const iter) {
 
-    int i;
-    for (i = 0; i < iter; i+=4) {
-      printf("---- Iteration %d, dt = %f ----\n", (i+1)*100, buf_track[i]);
-      printf("[%d,%d]: %5.2f  [%d,%d]: %5.2f  [%d,%d]: %5.2f  ",
-	     ROWS_GLOBAL-i, COLUMNS-i, buf_track[i+1],
-	     ROWS_GLOBAL-i, COLUMNS-i, buf_track[i+2],
-	     ROWS_GLOBAL-i, COLUMNS-i, buf_track[i+3]);
+  int i,j;
+  j=100;
+  for (i = 0, j = 100; i+3 <= iter; i+=4, j+=100) {
+      printf("---- Iteration %d, dt = %f ----\n", j, buf_track[i]);
+      printf("[%d,%d]: %5.2f  [%d,%d]: %5.2f  [%d,%d]: %5.2f  \n",
+	     ROWS_GLOBAL-5, COLUMNS-5, buf_track[i+1],
+	     ROWS_GLOBAL-4, COLUMNS-4, buf_track[i+2],
+	     ROWS_GLOBAL-3, COLUMNS-3, buf_track[i+3]);
     }
-    printf("\n");
 }
 
 
