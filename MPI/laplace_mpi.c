@@ -31,8 +31,6 @@
 #include <mpi.h>
 
 //#define ENABLE_LARGE
-//#define ENABLE_ACC_TEMPORAL_BLOCKING
-
 #define ENABLE_DOUBLE_BUFFERING
 
 #ifdef ENABLE_LARGE
@@ -164,63 +162,6 @@ int main(int argc, char *argv[]) {
         
         double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
         
-        #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
-        
-        #pragma acc parallel async(1)
-        {
-            for (int d = 0; d < DEPTH; d++) {
-                int start_i = ROW_GPU_FIRST-(DEPTH-1)+d;
-                int end_i   = ROW_GPU_LAST +(DEPTH-1)-d;
-                #pragma acc loop
-                for(i = start_i; i < end_i; i++) { INNER_LOOP_CALC }
-                
-                if (d != DEPTH-1) {
-                    #pragma acc loop
-                    for (i = start_i; i < end_i; i++) { INNER_LOOP_COPY }
-                }
-            }
-            
-            #pragma acc loop
-            for (i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP_MAX(dt_acc) INNER_LOOP_COPY }
-        }
-        #pragma omp parallel
-        {
-            for (int d = 0; d < DEPTH; d++) {
-                int upper_start_i = 1+d;
-                int upper_end_i   = ROW_GPU_FIRST+(DEPTH-1)-d;
-                int lower_start_i = ROW_GPU_LAST -(DEPTH-1)+d;
-                int lower_end_i   = (ROWS+DEPTH*2)-1-d;
-                if(my_PE_num == 0) upper_start_i = fmax(upper_start_i, DEPTH);
-                if(my_PE_num == npes-1) lower_end_i = fmin(lower_end_i, ROWS+DEPTH);
-                
-                #pragma omp for nowait
-                for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_CALC }
-                #pragma omp for
-                for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_CALC }
-                
-                if (d != DEPTH-1) {
-                    #pragma omp for nowait
-                    for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_COPY }
-                    #pragma omp for
-                    for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_COPY }
-                }
-            }
-            
-            {
-                int upper_start_i = DEPTH;
-                int upper_end_i   = ROW_GPU_FIRST;
-                int lower_start_i = ROW_GPU_LAST ;
-                int lower_end_i   = (ROWS+DEPTH*2)-DEPTH;
-                #pragma omp for nowait reduction(max:dt_omp_1)
-                for (i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_MAX(dt_omp_1) INNER_LOOP_COPY }
-                #pragma omp for nowait reduction(max:dt_omp_2)
-                for (i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_MAX(dt_omp_2) INNER_LOOP_COPY }
-            }
-        }
-        
-        #pragma acc wait(1)
-        
-        #else // ENABLE_ACC_TEMPORAL_BLOCKING
         for(int d=0;d<DEPTH;d++){
             Temperature_last = ((iteration+d) % 2 == 1) ? Temperature_0 : Temperature_1;
             Temperature      = ((iteration+d) % 2 == 1) ? Temperature_1 : Temperature_0;
@@ -276,8 +217,6 @@ int main(int argc, char *argv[]) {
         }
         #pragma acc wait(1)
         
-        #endif // ENABLE_ACC_TEMPORAL_BLOCKING
-        
         dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
 
         // COMMUNICATION PHASE: send ghost rows for next iteration
@@ -326,13 +265,6 @@ int main(int argc, char *argv[]) {
         }
 
         iteration+=DEPTH;
-        
-        #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
-        #pragma acc update device(Temperature_last[ROW_GPU_FIRST-DEPTH:DEPTH][1:COLUMNS]), \
-                           host(Temperature_last[ROW_GPU_FIRST:DEPTH][1:COLUMNS]), \
-                           host(Temperature_last[ROW_GPU_LAST-DEPTH:DEPTH][1:COLUMNS]), \
-                           device(Temperature_last[ROW_GPU_LAST:DEPTH][1:COLUMNS])
-        #endif
     }
 
     // Slightly more accurate timing and cleaner output
