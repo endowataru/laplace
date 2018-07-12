@@ -49,11 +49,11 @@
 #define MAX_TEMP_ERROR 0.01
 
 #ifdef ENABLE_LARGE
-    #define CHECK_ROW   8064
-    #define CHECK_COL   10702
+#define CHECK_ROW   8064
+#define CHECK_COL   10702
 #else
-    #define CHECK_ROW   504
-    #define CHECK_COL   622
+#define CHECK_ROW   504
+#define CHECK_COL   622
 #endif
 
 double Temperature[ROWS+2*DEPTH][COLUMNS+2];
@@ -68,143 +68,143 @@ int        my_PE_num;           // my PE number
 
 int main(int argc, char *argv[]) {
 
-    int i, j;
-    int max_iterations;
-    int iteration=1;
-    double dt;
-    double start_time, stop_time, elapsed_time;
+	int i, j;
+	int max_iterations;
+	int iteration=1;
+	double dt;
+	double start_time, stop_time, elapsed_time;
 
-    double     dt_global=100;       // delta t across all PEs
-    MPI_Status status;              // status returned by MPI calls
+	double     dt_global=100;       // delta t across all PEs
+	MPI_Status status;              // status returned by MPI calls
 
-    // the usual MPI startup routines
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &my_PE_num);
-    MPI_Comm_size(MPI_COMM_WORLD, &npes);
-
-
-    if (my_PE_num == 0)
-      {
-	printf("Running on %d MPI processes\n\n", npes);
-      }
-
-    // verify only NPES PEs are being used
-    if(npes != NPES) {
-      if(my_PE_num==0) {
-        printf("This code must be run with %d PEs\n", NPES);
-      }
-      MPI_Finalize();
-      exit(1);
-    }
-
-    // PE 0 asks for input
-    if(my_PE_num==0) {
-      //      printf("Maximum iterations [100-4000]?\n");
-      //      fflush(stdout); // Not always necessary, but can be helpful
-      //      scanf("%d", &max_iterations);
-      max_iterations = 4000;
-      printf("Maximum iterations = %d\n", max_iterations);
-
-    }
-
-    // bcast max iterations to other PEs
-    MPI_Bcast(&max_iterations, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    if (my_PE_num==0) start_time = MPI_Wtime();
-
-    initialize(npes, my_PE_num);
-
-    while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
-
-	    for(int d=0;d<DEPTH;d++){
-		    // main calculation: average my four neighborsa
-
-		    //This code block is to surpress updates of bounderies.
-		    int start_i=1+d;
-		    int end_i=ROWS+DEPTH*2-2-d;
-		    if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
-		    if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
-		   // if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
-
-		    for(i = start_i; i <= end_i; i++) {
-			    for(j = 1; j <= COLUMNS; j++) {
-				    Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
-			    }
-		    }
-
-		    dt = 0;
-
-		    for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
-			    for(j = 1; j <= COLUMNS; j++){
-				    dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-			    }
-		    }
-		    for(i = start_i; i <= end_i; i++){
-			    for(j = 1; j <= COLUMNS; j++){
-				Temperature_last[i][j]=Temperature[i][j];
-			    }
-		    }
-
-	    }
-
-        // COMMUNICATION PHASE: send ghost rows for next iteration
-
-        // send bottom real row down
-        if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Send(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
-        }
-
-        // receive the bottom row from above into our top ghost row
-        if(my_PE_num != 0){                  //unless we are top PE
-            MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
-        }
-
-        // send top real row up
-        if(my_PE_num != 0){                    //unless we are top PE
-            MPI_Send(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
-        }
-
-        // receive the top row from below into our bottom ghost row
-        if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
-        }
+	// the usual MPI startup routines
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &my_PE_num);
+	MPI_Comm_size(MPI_COMM_WORLD, &npes);
 
 
-        // find global dt
-        MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	if (my_PE_num == 0)
+	{
+		printf("Running on %d MPI processes\n\n", npes);
+	}
 
-        // periodically print test values - only for PE in lower corner
-        if((iteration % 1) == 0) {
-            if (my_PE_num == npes-1 ){
-	      track_progress(iteration, dt_global);
-	    }
-        }
+	// verify only NPES PEs are being used
+	if(npes != NPES) {
+		if(my_PE_num==0) {
+			printf("This code must be run with %d PEs\n", NPES);
+		}
+		MPI_Finalize();
+		exit(1);
+	}
 
-	iteration+=DEPTH;
-    }
+	// PE 0 asks for input
+	if(my_PE_num==0) {
+		//      printf("Maximum iterations [100-4000]?\n");
+		//      fflush(stdout); // Not always necessary, but can be helpful
+		//      scanf("%d", &max_iterations);
+		max_iterations = 4000;
+		printf("Maximum iterations = %d\n", max_iterations);
 
-    // Slightly more accurate timing and cleaner output
-    MPI_Barrier(MPI_COMM_WORLD);
+	}
 
-    // PE 0 finish timing and output values
-    if (my_PE_num==0){
-        stop_time = MPI_Wtime();
-	elapsed_time = stop_time - start_time;
+	// bcast max iterations to other PEs
+	MPI_Bcast(&max_iterations, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-	printf("\nMax error at iteration %d was %20.15g\n", iteration-1, dt_global);
-	printf("Total time was %f seconds.\n", elapsed_time);
-    }
+	if (my_PE_num==0) start_time = MPI_Wtime();
 
-    if (CHECK_ROW/ROWS == my_PE_num) {
-      printf("PE %d: T(%d,%d) = %lf (%lf)\n",
-	     my_PE_num, CHECK_ROW, CHECK_COL,
-	     Temperature_last[CHECK_ROW % ROWS + DEPTH][CHECK_COL],
-	     Temperature[CHECK_ROW % ROWS + DEPTH][CHECK_COL]
-	     // TODO: Temperature becomes 0.0
-	     );
-    }
-    MPI_Finalize();
+	initialize(npes, my_PE_num);
+
+	while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
+
+		for(int d=0;d<DEPTH;d++){
+			// main calculation: average my four neighborsa
+
+			//This code block is to surpress updates of bounderies.
+			int start_i=1+d;
+			int end_i=ROWS+DEPTH*2-2-d;
+			if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
+			if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
+			// if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
+
+			for(i = start_i; i <= end_i; i++) {
+				for(j = 1; j <= COLUMNS; j++) {
+					Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
+				}
+			}
+
+			dt = 0;
+
+			for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
+				for(j = 1; j <= COLUMNS; j++){
+					dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+				}
+			}
+			for(i = start_i; i <= end_i; i++){
+				for(j = 1; j <= COLUMNS; j++){
+					Temperature_last[i][j]=Temperature[i][j];
+				}
+			}
+
+		}
+
+		// COMMUNICATION PHASE: send ghost rows for next iteration
+
+		// send bottom real row down
+		if(my_PE_num != npes-1){             //unless we are bottom PE
+			MPI_Send(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+		}
+
+		// receive the bottom row from above into our top ghost row
+		if(my_PE_num != 0){                  //unless we are top PE
+			MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+		}
+
+		// send top real row up
+		if(my_PE_num != 0){                    //unless we are top PE
+			MPI_Send(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
+		}
+
+		// receive the top row from below into our bottom ghost row
+		if(my_PE_num != npes-1){             //unless we are bottom PE
+			MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+		}
+
+
+		// find global dt
+		MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+		MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+		// periodically print test values - only for PE in lower corner
+		if((iteration % 100) == 0) {
+			if (my_PE_num == npes-1 ){
+				track_progress(iteration, dt_global);
+			}
+		}
+
+		iteration+=DEPTH;
+	}
+
+	// Slightly more accurate timing and cleaner output
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	// PE 0 finish timing and output values
+	if (my_PE_num==0){
+		stop_time = MPI_Wtime();
+		elapsed_time = stop_time - start_time;
+
+		printf("\nMax error at iteration %d was %20.15g\n", iteration-1, dt_global);
+		printf("Total time was %f seconds.\n", elapsed_time);
+	}
+
+	if (CHECK_ROW/ROWS == my_PE_num) {
+		printf("PE %d: T(%d,%d) = %lf (%lf)\n",
+				my_PE_num, CHECK_ROW, CHECK_COL,
+				Temperature_last[CHECK_ROW % ROWS + DEPTH][CHECK_COL],
+				Temperature[CHECK_ROW % ROWS + DEPTH][CHECK_COL]
+				// TODO: Temperature becomes 0.0
+		      );
+	}
+	MPI_Finalize();
 }
 
 
@@ -243,24 +243,24 @@ void initialize(){
 // print diagonal in bottom right corner where most action is
 void track_progress(int iteration, double dt) {
 
-    int i;
+	int i;
 
-    printf("---- Iteration %d, dt = %f ----\n", iteration, dt);
-    // output global coordinates so user doesn't have to understand decompositi
-    for(i = 5; i >= 3; i--) {
-      printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS+DEPTH-i][COLUMNS-i]);
-    }
-    printf("\n");
+	printf("---- Iteration %d, dt = %f ----\n", iteration, dt);
+	// output global coordinates so user doesn't have to understand decompositi
+	for(i = 5; i >= 3; i--) {
+		printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS+DEPTH-i][COLUMNS-i]);
+	}
+	printf("\n");
 }
 
 
 void debug_dumpallarry(){
-    for(int i =0;i<ROWS+2*DEPTH;i++){
-    	for(int j=0;j<COLUMNS+2;j++){
-		printf("%5.2f,",Temperature_last[i][j]);
-        }
+	for(int i =0;i<ROWS+2*DEPTH;i++){
+		for(int j=0;j<COLUMNS+2;j++){
+			printf("%5.2f,",Temperature_last[i][j]);
+		}
+		printf("\n");
+	}
 	printf("\n");
-    }
-    printf("\n");
 }
 
