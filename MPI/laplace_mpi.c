@@ -92,9 +92,9 @@ int main(int argc, char *argv[]) {
     double start_time, stop_time, elapsed_time;
 
     double     dt_global=100;         // delta t across all PEs
-    MPI_Status statuses[3];           // status returned by MPI calls
+    MPI_Status statuses[5];           // status returned by MPI calls
 
-    MPI_Request ireq[3];
+    MPI_Request ireq[5];
 
     // the usual MPI startup routines
     MPI_Init(&argc, &argv);
@@ -179,8 +179,7 @@ int main(int argc, char *argv[]) {
         // send bottom real row down
         int ireqi = 0;
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Isend(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
-            ireqi++;
+            MPI_Isend(&Temperature[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD, &ireq[ireqi++]);
         }
 
         // receive the bottom row from above into our top ghost row
@@ -191,15 +190,12 @@ int main(int argc, char *argv[]) {
                 #else
                 &Temperature_last[0][1],
                 #endif
-                (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq[ireqi]);
-            
-            ireqi++;
+                (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &ireq[ireqi++]);
         }
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
-            MPI_Isend(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
-            ireqi++;
+            MPI_Isend(&Temperature[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD, &ireq[ireqi++]);
         }
 
         // receive the top row from below into our bottom ghost row
@@ -210,15 +206,13 @@ int main(int argc, char *argv[]) {
                 #else
                 &Temperature_last[ROWS+DEPTH][1],
                 #endif
-                (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq[ireqi]);
-            
-            ireqi++;
+                (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &ireq[ireqi++]);
         }
 
-        MPI_Waitall(ireqi, ireq, statuses);
-
         // find global dt
-        MPI_Allreduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        MPI_Iallreduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD, &ireq[ireqi++]);
+
+        MPI_Waitall(ireqi, ireq, statuses);
 
         // periodically print test values - only for PE in lower corner
         if((iteration % 100) == 1) {
