@@ -32,6 +32,8 @@
 
 //#define ENABLE_LARGE
 
+#define ENABLE_DOUBLE_BUFFERING
+
 #ifdef ENABLE_LARGE
     #define COLUMNS       10752
     #define ROWS_GLOBAL   10752        // this is a "global" row count
@@ -63,8 +65,16 @@
     #define CHECK_COL   622
 #endif
 
+#ifdef ENABLE_DOUBLE_BUFFERING
+double Temperature_0[ROWS+2*DEPTH][COLUMNS+2];
+double Temperature_1[ROWS+2*DEPTH][COLUMNS+2];
+
+double (*Temperature_last)[COLUMNS+2] = Temperature_0;
+double (*Temperature)[COLUMNS+2] = Temperature_1;
+#else
 double Temperature[ROWS+2*DEPTH][COLUMNS+2];
 double Temperature_last[ROWS+2*DEPTH][COLUMNS+2];
+#endif
 
 void initialize();
 void track_progress(int iter, double dt);
@@ -124,6 +134,9 @@ int main(int argc, char *argv[]) {
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
 
         for(int d=0;d<DEPTH;d++){
+            Temperature_last = ((iteration+d) % 2 == 1) ? Temperature_0 : Temperature_1;
+            Temperature      = ((iteration+d) % 2 == 1) ? Temperature_1 : Temperature_0;
+            
             // main calculation: average my four neighborsa
 
             //This code block is to surpress updates of bounderies.
@@ -138,6 +151,7 @@ int main(int argc, char *argv[]) {
                     Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
                 }
             }
+            #ifndef ENABLE_DOUBLE_BUFFERING
             if(d!=DEPTH-1){
                 for(i = start_i; i <= end_i; i++){
                     for(j = 1; j <= COLUMNS; j++){
@@ -145,7 +159,7 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-
+            #endif
         }
 
         dt = 0;
@@ -153,7 +167,9 @@ int main(int argc, char *argv[]) {
         for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
             for(j = 1; j <= COLUMNS; j++){
                 dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+                #ifndef ENABLE_DOUBLE_BUFFERING
                 Temperature_last[i][j] = Temperature[i][j];
+                #endif
             }
         }
 
@@ -166,7 +182,11 @@ int main(int argc, char *argv[]) {
 
         // receive the bottom row from above into our top ghost row
         if(my_PE_num != 0){                  //unless we are top PE
+            #ifdef ENABLE_DOUBLE_BUFFERING
+            MPI_Recv(&Temperature[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+            #else
             MPI_Recv(&Temperature_last[0][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, DOWN, MPI_COMM_WORLD, &status);
+            #endif
         }
 
         // send top real row up
@@ -176,7 +196,11 @@ int main(int argc, char *argv[]) {
 
         // receive the top row from below into our bottom ghost row
         if(my_PE_num != npes-1){             //unless we are bottom PE
+            #ifdef ENABLE_DOUBLE_BUFFERING
+            MPI_Recv(&Temperature[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+            #else
             MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
+            #endif
         }
 
         // find global dt
