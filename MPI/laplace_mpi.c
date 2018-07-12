@@ -30,8 +30,13 @@
 #include <math.h>
 #include <mpi.h>
 
+#ifdef ENABLE_LARGE
 #define COLUMNS       10752
 #define ROWS_GLOBAL   10752      // this is a "global" row count
+#else
+#define COLUMNS       672
+#define ROWS_GLOBAL   672      // this is a "global" row count
+#endif
 
 // Use 10752 (16 times bigger) for large challenge problem
 // All chosen to be easily divisible by Bridges' 28 cores per node
@@ -122,6 +127,7 @@ int main(int argc, char *argv[]) {
 			//This code block is to surpress updates of bounderies.
 			int start_i=1+d;
 			int end_i=ROWS+DEPTH*2-2-d;
+			dt = 0;
 			if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
 			if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
 			// if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
@@ -131,22 +137,11 @@ int main(int argc, char *argv[]) {
 					Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
 				}
 			}
-			if(d!=DEPTH-1){
 			for(i = start_i; i <= end_i; i++){
 				for(j = 1; j <= COLUMNS; j++){
+					dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
 					Temperature_last[i][j]=Temperature[i][j];
 				}
-			}
-			}
-
-		}
-
-		dt = 0;
-
-		for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
-			for(j = 1; j <= COLUMNS; j++){
-				dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-				Temperature_last[i][j] = Temperature[i][j];
 			}
 		}
 
@@ -177,11 +172,11 @@ int main(int argc, char *argv[]) {
 		MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
 		// periodically print test values - only for PE in lower corner
-		if((iteration % 100) == 0) {
-			if (my_PE_num == npes-1 ){
-				track_progress(iteration, dt_global);
-			}
-		}
+		//if((iteration % 100) == 0) {
+		//	if (my_PE_num == npes-1 ){
+		//		track_progress(iteration, dt_global);
+		//	}
+		//}
 
 		iteration+=DEPTH;
 	}
