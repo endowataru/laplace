@@ -128,9 +128,7 @@ int main(int argc, char *argv[]) {
     //initialize(npes, my_PE_num);
     initialize();
     
-    #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
     #pragma acc data copyin(Temperature_last), create(Temperature)
-    #endif
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
         // main calculation: average my four neighbors
         #define INNER_LOOP_CALC \
@@ -149,8 +147,9 @@ int main(int argc, char *argv[]) {
                 Temperature_last[i][j] = Temperature[i][j]; \
             }
         
-        #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
         double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
+        
+        #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
         
         #pragma acc parallel async(1)
         {
@@ -206,33 +205,70 @@ int main(int argc, char *argv[]) {
         
         #pragma acc wait(1)
         
-        dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
-        
         #else // ENABLE_ACC_TEMPORAL_BLOCKING
         for(int d=0;d<DEPTH;d++){
             // main calculation: average my four neighborsa
-
+            
+            #pragma acc parallel async(1)
+            {
+                #pragma acc loop
+                for(i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP_CALC }
+            }
+            
             //This code block is to surpress updates of bounderies.
             int start_i=1+d;
             int end_i=ROWS+DEPTH*2-2-d;
             if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
             if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
             // if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
-
-            for(i = start_i; i <= end_i; i++) { INNER_LOOP_CALC }
+            
+            #pragma omp parallel
+            {
+                #pragma omp for nowait
+                for(i = start_i; i < ROW_GPU_FIRST; i++) { INNER_LOOP_CALC }
+                #pragma omp for
+                for(i = ROW_GPU_LAST; i <= end_i; i++) { INNER_LOOP_CALC }
+            }
+            
+            #pragma acc wait(1)
+            
+            #pragma acc update device(Temperature[ROW_GPU_FIRST-1:1][1:COLUMNS]), \
+                               host(Temperature[ROW_GPU_FIRST:1][1:COLUMNS]), \
+                               host(Temperature[ROW_GPU_LAST-1:1][1:COLUMNS]), \
+                               device(Temperature[ROW_GPU_LAST:1][1:COLUMNS])
+            
             if(d != DEPTH-1) {
                 for(i = start_i; i <= end_i; i++){ INNER_LOOP_COPY }
             }
-
         }
 
+        #if 1
+        #pragma acc parallel async(1)
+        {
+            #pragma acc loop
+            for(i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP_MAX(dt_acc) INNER_LOOP_COPY }
+        }
+        #pragma omp parallel
+        {
+            #pragma omp for nowait reduction(max:dt_omp_1)
+            for (i = DEPTH; i < ROW_GPU_FIRST; i++) { INNER_LOOP_MAX(dt_omp_1) INNER_LOOP_COPY }
+            #pragma omp for        reduction(max:dt_omp_2)
+            for (i = ROW_GPU_LAST; i <= ROWS+DEPTH-1; i++) { INNER_LOOP_MAX(dt_omp_2) INNER_LOOP_COPY }
+        }
+        #pragma acc wait(1)
+        
+        #else
         dt = 0;
-
+        
+        #pragma omp parallel for reduction(max:dt)
         for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
             INNER_LOOP_MAX(dt) INNER_LOOP_COPY
         }
+        #endif
         
         #endif // ENABLE_ACC_TEMPORAL_BLOCKING
+        
+        dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
 
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
@@ -269,10 +305,12 @@ int main(int argc, char *argv[]) {
 
         iteration+=DEPTH;
         
-        #pragma acc update device(Temperature_last[ROW_GPU_FIRST-DEPTH:DEPTH][0:COLUMNS]), \
-                           host(Temperature_last[ROW_GPU_FIRST:DEPTH][0:COLUMNS]), \
-                           host(Temperature_last[ROW_GPU_LAST-DEPTH:DEPTH][0:COLUMNS]), \
-                           device(Temperature_last[ROW_GPU_LAST:DEPTH][0:COLUMNS])
+        #ifdef ENABLE_ACC_TEMPORAL_BLOCKING
+        #pragma acc update device(Temperature_last[ROW_GPU_FIRST-DEPTH:DEPTH][1:COLUMNS]), \
+                           host(Temperature_last[ROW_GPU_FIRST:DEPTH][1:COLUMNS]), \
+                           host(Temperature_last[ROW_GPU_LAST-DEPTH:DEPTH][1:COLUMNS]), \
+                           device(Temperature_last[ROW_GPU_LAST:DEPTH][1:COLUMNS])
+        #endif
     }
 
     // Slightly more accurate timing and cleaner output
