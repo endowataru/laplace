@@ -55,7 +55,7 @@
 #define UP       101
 
 // Original Parmeters
-#define DEPTH	2 //It must be lower than ROWS
+#define DEPTH	1 //It must be lower than ROWS
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
 <<<<<<< HEAD
 #endif
         // main calculation: average my four neighbors
-        #define INNER_LOOP { \
+        #define INNER_LOOP_1 { \
             int j; \
             for(j = 1; j <= COLUMNS; j++) { \
                 Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + \
@@ -140,14 +140,27 @@ int main(int argc, char *argv[]) {
             } \
         }
         
+        #define INNER_LOOP_2(dt_red) { \
+            int j; \
+            for(j = 1; j <= COLUMNS; j++){ \
+                dt_red = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt_red); \
+                Temperature_last[i][j] = Temperature[i][j]; \
+            } \
+        }
+        
+        double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
+        
         #pragma acc parallel
         {
             for (int d = 0; d < DEPTH; d++) {
                 int start_i = ROW_GPU_FIRST-(DEPTH-1)+d;
                 int end_i   = ROW_GPU_LAST +(DEPTH-1)-d;
                 #pragma acc loop
-                for(i = start_i; i < end_i; i++) { INNER_LOOP }
+                for(i = start_i; i < end_i; i++) { INNER_LOOP_1 }
             }
+            
+            #pragma acc loop
+            for (i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP_2(dt_acc) }
         }
         #pragma omp parallel
         {
@@ -159,9 +172,21 @@ int main(int argc, char *argv[]) {
                 if(my_PE_num == 0) upper_start_i = fmax(upper_start_i, DEPTH);
                 if(my_PE_num == npes-1) lower_end_i = fmin(lower_end_i, ROWS+DEPTH);
                 #pragma omp for nowait
-                for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP }
-                #pragma omp for nowait
-                for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP }
+                for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_1 }
+                #pragma omp for
+                for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_1 }
+            }
+                
+            {
+                int upper_start_i = DEPTH;
+                int upper_end_i   = ROW_GPU_FIRST;
+                int lower_start_i = ROW_GPU_LAST ;
+                int lower_end_i   = (ROWS+DEPTH*2)-DEPTH;
+                #pragma omp for nowait reduction(max:dt_omp_1)
+                for (i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP_2(dt_omp_1) }
+                #pragma omp for nowait reduction(max:dt_omp_2)
+                for (i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP_2(dt_omp_2) }
+            }
 #if 0
 =======
 
@@ -179,11 +204,6 @@ int main(int argc, char *argv[]) {
                 for(j = 1; j <= COLUMNS; j++) {
                     Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
                 }
->>>>>>> master
-#endif
-            }
-
-#if 0
                 dt = 0;
 
                 for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
@@ -199,7 +219,10 @@ int main(int argc, char *argv[]) {
 #endif
         }
         
-        #undef INNER_LOOP
+        #undef INNER_LOOP_1
+        #undef INNER_LOOP_2
+        
+        dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
         
         //#pragma acc kernels wait(1)
 
@@ -225,9 +248,10 @@ int main(int argc, char *argv[]) {
             MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
         }
 
-        dt = 0.0;
+        //dt = 0.0;
 
         //#pragma omp parallel for collapse(2)
+        #if 0
         {
         double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
         
@@ -257,6 +281,7 @@ int main(int argc, char *argv[]) {
         
         #undef INNER_LOOP
         }
+        #endif
 
         // find global dt
         MPI_Reduce(&dt, &dt_global, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
