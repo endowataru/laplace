@@ -30,8 +30,8 @@
 #include <math.h>
 #include <mpi.h>
 
-#define COLUMNS       4
-#define ROWS_GLOBAL   8      // this is a "global" row count
+#define COLUMNS       672
+#define ROWS_GLOBAL   672      // this is a "global" row count
 
 // Use 10752 (16 times bigger) for large challenge problem
 // All chosen to be easily divisible by Bridges' 28 cores per node
@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
       //      printf("Maximum iterations [100-4000]?\n");
       //      fflush(stdout); // Not always necessary, but can be helpful
       //      scanf("%d", &max_iterations);
-      max_iterations = 8;
+      max_iterations = 4000;
       printf("Maximum iterations = %d\n", max_iterations);
 
     }
@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
 		    int end_i=ROWS+DEPTH*2-2-d;
 		    if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
 		    if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
-		    if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
+		   // if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
 
 		    for(i = start_i; i <= end_i; i++) {
 			    for(j = 1; j <= COLUMNS; j++) {
@@ -177,8 +177,7 @@ int main(int argc, char *argv[]) {
         // periodically print test values - only for PE in lower corner
         if((iteration % 1) == 0) {
             if (my_PE_num == npes-1 ){
-	     // track_progress(iteration, dt_global);
- //             debug_dumpallarry();
+	      track_progress(iteration, dt_global);
 	    }
         }
 
@@ -193,15 +192,15 @@ int main(int argc, char *argv[]) {
         stop_time = MPI_Wtime();
 	elapsed_time = stop_time - start_time;
 
-	//printf("\nMax error at iteration %d was %20.15g\n", iteration-1, dt_global);
-	//printf("Total time was %f seconds.\n", elapsed_time);
+	printf("\nMax error at iteration %d was %20.15g\n", iteration-1, dt_global);
+	printf("Total time was %f seconds.\n", elapsed_time);
     }
 
     if (CHECK_ROW/ROWS == my_PE_num) {
       printf("PE %d: T(%d,%d) = %lf (%lf)\n",
 	     my_PE_num, CHECK_ROW, CHECK_COL,
-	     Temperature_last[CHECK_ROW % ROWS][CHECK_COL],
-	     Temperature[CHECK_ROW % ROWS][CHECK_COL]
+	     Temperature_last[CHECK_ROW % ROWS + DEPTH][CHECK_COL],
+	     Temperature[CHECK_ROW % ROWS + DEPTH][CHECK_COL]
 	     // TODO: Temperature becomes 0.0
 	     );
     }
@@ -249,7 +248,7 @@ void track_progress(int iteration, double dt) {
     printf("---- Iteration %d, dt = %f ----\n", iteration, dt);
     // output global coordinates so user doesn't have to understand decompositi
     for(i = 5; i >= 3; i--) {
-      printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS-i][COLUMNS-i]);
+      printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS+DEPTH-i][COLUMNS-i]);
     }
     printf("\n");
 }
