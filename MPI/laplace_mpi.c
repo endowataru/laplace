@@ -46,12 +46,17 @@
 #define NPES            4        // number of processors
 #define ROWS (ROWS_GLOBAL/NPES)  // number of real local rows
 
+#define ROWS_GPU        100
+#define ROW_GPU_FIRST   ((ROWS-ROWS_GPU)/2)
+#define ROW_GPU_LAST    (ROW_GPU_FIRST+ROWS_GPU)
+
 // communication tags
 #define DOWN     100
 #define UP       101
 
 // Original Parmeters
-#define DEPTH	1 //It must be lower than ROWS
+//#define DEPTH	1 //It must be lower than ROWS
+#define DEPTH	10 //It must be lower than ROWS
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
@@ -74,7 +79,7 @@ int        my_PE_num;           // my PE number
 
 int main(int argc, char *argv[]) {
 
-    int i, j;
+    int i;
     int max_iterations;
     int iteration=1;
     double dt;
@@ -119,8 +124,11 @@ int main(int argc, char *argv[]) {
     if (my_PE_num==0) start_time = MPI_Wtime();
 
     initialize(npes, my_PE_num);
-
+    
+    #pragma acc data copy(Temperature_last), create(Temperature)
     while ( dt_global > MAX_TEMP_ERROR && iteration <= max_iterations ) {
+        #if 0
+<<<<<<< HEAD
 
         for(int d=0;d<DEPTH;d++){
             // main calculation: average my four neighborsa
@@ -136,7 +144,43 @@ int main(int argc, char *argv[]) {
                     Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
                 }
             }
+=======
+    #endif
+        // main calculation: average my four neighbors
+        #define INNER_LOOP { \
+            int j; \
+            for(j = 1; j <= COLUMNS; j++) { \
+                Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + \
+                                            Temperature_last[i][j+1] + Temperature_last[i][j-1]); \
+            } \
         }
+        
+        #pragma acc parallel
+        {
+            for (int d = 0; d < DEPTH; d++) {
+                int start_i = ROW_GPU_FIRST-(DEPTH-1)+d;
+                int end_i   = ROW_GPU_LAST +(DEPTH-1)-d;
+                #pragma acc loop
+                for(i = start_i; i < end_i; i++) { INNER_LOOP }
+            }
+        }
+        #pragma omp parallel
+        {
+            for (int d = 0; d < DEPTH; d++) {
+                int upper_start_i = 1+d;
+                int upper_end_i   = ROW_GPU_FIRST+(DEPTH-1)-d;
+                int lower_start_i = ROW_GPU_LAST +(DEPTH-1)-d;
+                int lower_end_i   = (ROWS+DEPTH*2)-1-d;
+                #pragma omp for nowait
+                for(i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP }
+                #pragma omp for nowait
+                for(i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP }
+            }
+        }
+        
+        #undef INNER_LOOP
+        
+        //#pragma acc kernels wait(1)
 
         // COMMUNICATION PHASE: send ghost rows for next iteration
 
@@ -162,11 +206,35 @@ int main(int argc, char *argv[]) {
 
         dt = 0.0;
 
-        for(i = 1; i <= ROWS; i++){
-            for(j = 1; j <= COLUMNS; j++){
-                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-                Temperature_last[i][j] = Temperature[i][j];
-            }
+        //#pragma omp parallel for collapse(2)
+        {
+        double dt_omp_1 = 0.0, dt_omp_2 = 0.0, dt_acc = 0.0;
+        
+        #define INNER_LOOP(dt_red) { \
+            int j; \
+            for(j = 1; j <= COLUMNS; j++){ \
+                dt_red = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt_red); \
+                Temperature_last[i][j] = Temperature[i][j]; \
+            } \
+        }
+        
+        #pragma acc kernels
+        for (i = ROW_GPU_FIRST; i < ROW_GPU_LAST; i++) { INNER_LOOP(dt_acc) }
+        #pragma omp parallel
+        {
+            int upper_start_i = DEPTH;
+            int upper_end_i   = ROW_GPU_FIRST;
+            int lower_start_i = ROW_GPU_LAST ;
+            int lower_end_i   = (ROWS+DEPTH*2)-DEPTH;
+            #pragma omp for nowait reduction(max:dt_omp_1)
+            for (i = upper_start_i; i < upper_end_i; i++) { INNER_LOOP(dt_omp_1) }
+            #pragma omp for nowait reduction(max:dt_omp_2)
+            for (i = lower_start_i; i < lower_end_i; i++) { INNER_LOOP(dt_omp_2) }
+        }
+        
+        dt = fmax(fmax(dt_omp_1, dt_omp_2), dt_acc);
+        
+        #undef INNER_LOOP
         }
 
         // find global dt
@@ -176,11 +244,17 @@ int main(int argc, char *argv[]) {
         // periodically print test values - only for PE in lower corner
         if((iteration % 100) == 0) {
             if (my_PE_num == npes-1){
+                //#pragma acc update host(Temperature)
                 track_progress(iteration, dt_global);
             }
         }
 
         iteration+=DEPTH;
+        
+        #pragma acc update device(Temperature_last[ROW_GPU_FIRST-DEPTH:DEPTH][0:COLUMNS]), \
+                           host(Temperature_last[ROW_GPU_FIRST:DEPTH][0:COLUMNS]), \
+                           host(Temperature_last[ROW_GPU_LAST-DEPTH:DEPTH][0:COLUMNS]), \
+                           device(Temperature_last[ROW_GPU_LAST:DEPTH][0:COLUMNS])
     }
 
     // Slightly more accurate timing and cleaner output
