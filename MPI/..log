@@ -1,0 +1,2 @@
+/opt/packages/pgi/linux86-64/2017/mpi/openmpi-1.10.2/bin/.bin/mpirun: Error: unknown option "-genv"
+Type '/opt/packages/pgi/linux86-64/2017/mpi/openmpi-1.10.2/bin/.bin/mpirun --help' for usage.
