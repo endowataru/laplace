@@ -51,7 +51,7 @@
 #define UP       101
 
 // Original Parmeters
-#define DEPTH	1 //It must be lower than ROWS
+#define DEPTH	2 //It must be lower than ROWS
 // largest permitted change in temp (This value takes 3264 steps)
 #define MAX_TEMP_ERROR 0.01
 
@@ -68,6 +68,7 @@ double Temperature_last[ROWS+2*DEPTH][COLUMNS+2];
 
 void initialize();
 void track_progress(int iter, double dt);
+void debug_dumpallarry();
 
 int        npes;                // number of PEs
 int        my_PE_num;           // my PE number
@@ -130,10 +131,24 @@ int main(int argc, char *argv[]) {
             int end_i=ROWS+DEPTH*2-2-d;
             if(my_PE_num == 0) start_i = fmax(start_i, DEPTH);
             if(my_PE_num == npes-1) end_i = fmin(end_i, ROWS+DEPTH-1);
+            // if(my_PE_num==2){ debug_dumpallarry(); printf("%d-%d\n",start_i,end_i);}
 
             for(i = start_i; i <= end_i; i++) {
                 for(j = 1; j <= COLUMNS; j++) {
                     Temperature[i][j] = 0.25 * (Temperature_last[i+1][j] + Temperature_last[i-1][j] + Temperature_last[i][j+1] + Temperature_last[i][j-1]);
+                }
+            }
+
+            dt = 0;
+
+            for(i = DEPTH; i <= ROWS+DEPTH-1; i++){
+                for(j = 1; j <= COLUMNS; j++){
+                    dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
+                }
+            }
+            for(i = start_i; i <= end_i; i++){
+                for(j = 1; j <= COLUMNS; j++){
+                    Temperature_last[i][j]=Temperature[i][j];
                 }
             }
         }
@@ -142,7 +157,7 @@ int main(int argc, char *argv[]) {
 
         // send bottom real row down
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Send(&Temperature[ROWS+DEPTH-1][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
+            MPI_Send(&Temperature_last[ROWS][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, DOWN, MPI_COMM_WORLD);
         }
 
         // receive the bottom row from above into our top ghost row
@@ -152,21 +167,12 @@ int main(int argc, char *argv[]) {
 
         // send top real row up
         if(my_PE_num != 0){                    //unless we are top PE
-            MPI_Send(&Temperature[1+DEPTH-1][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
+            MPI_Send(&Temperature_last[DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num-1, UP, MPI_COMM_WORLD);
         }
 
         // receive the top row from below into our bottom ghost row
         if(my_PE_num != npes-1){             //unless we are bottom PE
-            MPI_Recv(&Temperature_last[ROWS+1][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
-        }
-
-        dt = 0.0;
-
-        for(i = 1; i <= ROWS; i++){
-            for(j = 1; j <= COLUMNS; j++){
-                dt = fmax( fabs(Temperature[i][j]-Temperature_last[i][j]), dt);
-                Temperature_last[i][j] = Temperature[i][j];
-            }
+            MPI_Recv(&Temperature_last[ROWS+DEPTH][1], (COLUMNS+2)*DEPTH-2, MPI_DOUBLE, my_PE_num+1, UP, MPI_COMM_WORLD, &status);
         }
 
         // find global dt
@@ -174,7 +180,8 @@ int main(int argc, char *argv[]) {
         MPI_Bcast(&dt_global, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
         // periodically print test values - only for PE in lower corner
-        if((iteration % 100) == 0) {
+        if((iteration % 1) == 0) {
+        // TODO: The original program shows per "100"
             if (my_PE_num == npes-1){
                 track_progress(iteration, dt_global);
             }
@@ -200,8 +207,8 @@ int main(int argc, char *argv[]) {
     if (CHECK_ROW/ROWS == my_PE_num) {
         printf("PE %d: T(%d,%d) = %lf (%lf)\n",
                 my_PE_num, CHECK_ROW, CHECK_COL,
-                Temperature_last[CHECK_ROW % ROWS][CHECK_COL],
-                Temperature[CHECK_ROW % ROWS][CHECK_COL]
+                Temperature_last[CHECK_ROW % ROWS + DEPTH][CHECK_COL],
+                Temperature[CHECK_ROW % ROWS + DEPTH][CHECK_COL]
                 // TODO: Temperature becomes 0.0
               );
     }
@@ -223,9 +230,9 @@ void initialize(){
     tMax = (my_PE_num+1)*100.0/npes;
 
     // Left and right boundaries
-    for (i = 0; i <= ROWS+1; i++) {
-        Temperature_last[i+DEPTH-1][0] = 0.0;
-        Temperature_last[i+DEPTH-1][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*i;
+    for (i = 0; i < ROWS+DEPTH*2; i++) {
+        Temperature_last[i][0] = 0.0;
+        Temperature_last[i][COLUMNS+1] = tMin + ((tMax-tMin)/ROWS)*(i-DEPTH+1);
     }
 
     // Top boundary (PE 0 only)
@@ -250,7 +257,19 @@ void track_progress(int iteration, double dt) {
     printf("---- Iteration %d, dt = %f ----\n", iteration, dt);
     // output global coordinates so user doesn't have to understand decompositi
     for(i = 5; i >= 3; i--) {
-        printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS-i][COLUMNS-i]);
+        printf("[%d,%d]: %5.2f  ", ROWS_GLOBAL-i, COLUMNS-i, Temperature[ROWS+DEPTH-i][COLUMNS-i]);
     }
     printf("\n");
 }
+
+
+void debug_dumpallarry(){
+    for(int i =0;i<ROWS+2*DEPTH;i++){
+        for(int j=0;j<COLUMNS+2;j++){
+            printf("%5.2f,",Temperature_last[i][j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
